@@ -1,0 +1,41 @@
+[project]
+name = "newtale"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade (modernize syntax)
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific rules
+    "TC",   # move type-only imports into TYPE_CHECKING blocks
+]
+ignore = [
+    "E501", # line too long — handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["newtale"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "/home/vscode"
+venv = ".venv"
+typeCheckingMode = "standard"
+reportMissingImports = true
+reportMissingTypeStubs = false
