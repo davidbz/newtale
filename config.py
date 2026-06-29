@@ -35,7 +35,9 @@ class DataSourceConfig(BaseModel):
     weight: float
     name: str
     split: str = "train"
-    subset: str | None = None  # HF dataset config name (e.g. "sample-10BT" for fineweb-edu)
+    subset: str | None = None       # HF dataset config name passed as `name` to load_dataset
+    text_column: str = "text"       # column that holds the document text
+    dedup: bool = False             # enable exact-hash dedup for this source
 
 
 class DataConfig(BaseModel):
@@ -43,6 +45,7 @@ class DataConfig(BaseModel):
     sources: list[DataSourceConfig]
     seq_length: int = 4096
     seed: int = 42
+    dedup_max_entries: int = 500_000  # per-source dedup cap; best-effort beyond this
 
     @field_validator("sources")
     @classmethod

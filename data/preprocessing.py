@@ -45,14 +45,16 @@ def repetition_filter(text: str) -> bool:
 
 
 class ExactDedup:
-    def __init__(self) -> None:
+    def __init__(self, max_entries: int = 500_000) -> None:
         self._seen: set[str] = set()
+        self._max_entries = max_entries
 
     def is_duplicate(self, text: str) -> bool:
         h = xxhash.xxh64(text.encode()).hexdigest()
         if h in self._seen:
             return True
-        self._seen.add(h)
+        if len(self._seen) < self._max_entries:
+            self._seen.add(h)
         return False
 
 

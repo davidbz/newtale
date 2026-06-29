@@ -76,6 +76,7 @@ def main() -> None:
         rank=rank,
         world_size=world_size,
         num_workers=config.training.dataloader_num_workers,
+        dedup_max_entries=config.data.dedup_max_entries,
     )
     train_loader = DataLoader(
         train_dataset,
@@ -94,6 +95,7 @@ def main() -> None:
         rank=rank,
         world_size=world_size,
         num_workers=config.training.dataloader_num_workers,
+        dedup_max_entries=config.data.dedup_max_entries,
     )
     eval_loader = DataLoader(
         eval_dataset,

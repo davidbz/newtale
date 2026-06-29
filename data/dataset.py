@@ -18,15 +18,8 @@ if TYPE_CHECKING:
 class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
     """Packs tokenised documents into fixed-length chunks with no padding.
 
-    HF datasets are loaded lazily inside __iter__ so that each DataLoader worker
-    only buffers its own disjoint shard. The two-dimensional shard index:
-
-        shard_index = rank * effective_num_workers + worker_id
-        total_shards = world_size * effective_num_workers
-
-    ensures every (rank, worker) pair covers a unique, non-overlapping slice of
-    the parquet files, which limits peak system-RAM to ~1/total_shards of the
-    dataset instead of the full thing.
+    Datasets are loaded lazily inside __iter__ so each DataLoader worker only
+    buffers its own disjoint shard of the source parquet files.
     """
 
     def __init__(
@@ -38,6 +31,7 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
         rank: int = 0,
         world_size: int = 1,
         num_workers: int = 0,
+        dedup_max_entries: int = 500_000,
     ) -> None:
         super().__init__()
         self._sources = sources
@@ -47,6 +41,7 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
         self._rank = rank
         self._world_size = world_size
         self._num_workers = num_workers
+        self._dedup_max_entries = dedup_max_entries
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         worker_info = torch.utils.data.get_worker_info()
@@ -60,10 +55,10 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
 
         hf_datasets = []
         for src in self._sources:
-            kwargs: dict[str, Any] = {}
-            if src.subset is not None:
-                kwargs["name"] = src.subset
-            ds = load_dataset(src.path, split=src.split, streaming=True, **kwargs)
+            ds = load_dataset(src.path, name=src.subset, split=src.split, streaming=True)
+            ds = ds.select_columns([src.text_column])
+            if src.text_column != "text":
+                ds = ds.rename_column(src.text_column, "text")
             if total_shards > 1:
                 ds = ds.shard(num_shards=total_shards, index=shard_index)
             hf_datasets.append(ds)
@@ -75,7 +70,11 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
             seed=self._seed + shard_index,
         )
 
-        dedup = ExactDedup()
+        source_dedup: dict[str, ExactDedup | None] = {
+            src.name: ExactDedup(max_entries=self._dedup_max_entries) if src.dedup else None
+            for src in self._sources
+        }
+
         buffer: list[int] = []
         source_buffer: list[str] = []
 
@@ -83,7 +82,7 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
             text = sample.get("text", "")
             source = sample.get("_source", "unknown")
 
-            cleaned = preprocess(text, dedup)
+            cleaned = preprocess(text, dedup=source_dedup.get(source))
             if cleaned is None:
                 continue
 
@@ -102,14 +101,3 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
                 }
                 buffer = buffer[self._seq_length :]
                 source_buffer = source_buffer[self._seq_length :]
-
-
-def make_streaming_dataset(
-    hf_path: str,
-    split: str = "train",
-    **kwargs: Any,
-) -> Any:
-    """Load a single HF streaming dataset. Kept for external scripts."""
-    from datasets import load_dataset  # type: ignore[import-untyped]
-
-    return load_dataset(hf_path, split=split, streaming=True, **kwargs)

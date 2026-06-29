@@ -22,6 +22,7 @@ data:
       weight: 0.30
       name: starcoderdata
       split: train
+      text_column: content
   seq_length: 64
   seed: 42
 
