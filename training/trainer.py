@@ -63,7 +63,9 @@ class Trainer:
 
             if math.isnan(step_loss) or math.isinf(step_loss):
                 nan_count += 1
-                _logger.warning("NaN/Inf loss at step %d (count=%d)", global_step, nan_count)
+                _logger.warning(
+                    "NaN/Inf loss at step %d (count=%d)", global_step, nan_count
+                )
                 self.log.log(global_step, {"nan_count": nan_count})
                 if nan_count >= 3:
                     raise TrainingInstabilityError(
@@ -144,7 +146,9 @@ class Trainer:
 
             if math.isnan(total_loss) or math.isinf(total_loss):
                 nan_count += 1
-                _logger.warning("NaN/Inf loss at step %d (count=%d)", global_step, nan_count)
+                _logger.warning(
+                    "NaN/Inf loss at step %d (count=%d)", global_step, nan_count
+                )
                 self.log.log(global_step, {"nan_count": nan_count})
                 if nan_count >= 3:
                     raise TrainingInstabilityError(

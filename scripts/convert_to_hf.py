@@ -70,9 +70,17 @@ def remap_state_dict(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert NewTale checkpoint → HF LLaMA format")
-    parser.add_argument("--checkpoint", required=True, help="Checkpoint directory containing model.pt")
-    parser.add_argument("--config", required=True, help="Training YAML config used to produce the checkpoint")
+    parser = argparse.ArgumentParser(
+        description="Convert NewTale checkpoint → HF LLaMA format"
+    )
+    parser.add_argument(
+        "--checkpoint", required=True, help="Checkpoint directory containing model.pt"
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        help="Training YAML config used to produce the checkpoint",
+    )
     parser.add_argument("--output", required=True, help="Output directory for HF model")
     args = parser.parse_args()
 
@@ -88,7 +96,9 @@ def main() -> None:
         sys.exit(f"ERROR: {model_pt} not found. Did training save a checkpoint?")
 
     print(f"Loading {model_pt} …")
-    sd: dict[str, torch.Tensor] = torch.load(model_pt, map_location="cpu", weights_only=True)
+    sd: dict[str, torch.Tensor] = torch.load(
+        model_pt, map_location="cpu", weights_only=True
+    )
     print(f"  {len(sd)} keys loaded")
 
     remapped = remap_state_dict(sd)
@@ -140,14 +150,19 @@ def main() -> None:
     # ------------------------------------------------------------------ #
     # generation_config.json                                              #
     # ------------------------------------------------------------------ #
-    (output_dir / "generation_config.json").write_text(json.dumps({
-        "bos_token_id": 1,
-        "eos_token_id": 2,
-        "max_new_tokens": 512,
-        "do_sample": True,
-        "temperature": 0.8,
-        "top_p": 0.95,
-    }, indent=2))
+    (output_dir / "generation_config.json").write_text(
+        json.dumps(
+            {
+                "bos_token_id": 1,
+                "eos_token_id": 2,
+                "max_new_tokens": 512,
+                "do_sample": True,
+                "temperature": 0.8,
+                "top_p": 0.95,
+            },
+            indent=2,
+        )
+    )
 
     # ------------------------------------------------------------------ #
     # Tokenizer files                                                      #
@@ -171,16 +186,20 @@ def main() -> None:
     print(f"{'─' * 50}")
     print("\nNext steps:\n")
     print("  # Verify it loads:")
-    print(f"  python -c \"from transformers import AutoModelForCausalLM; m = AutoModelForCausalLM.from_pretrained('{output_dir}'); print(m.config)\"")
+    print(
+        f"  python -c \"from transformers import AutoModelForCausalLM; m = AutoModelForCausalLM.from_pretrained('{output_dir}'); print(m.config)\""
+    )
     print()
     print("  # Convert to GGUF (run from llama.cpp repo):")
-    print(f"  python convert_hf_to_gguf.py {output_dir.resolve()} --outfile newtale-1b-f16.gguf --outtype bf16")
+    print(
+        f"  python convert_hf_to_gguf.py {output_dir.resolve()} --outfile newtale-1b-f16.gguf --outtype bf16"
+    )
     print()
     print("  # Quantize:")
     print("  ./llama-quantize newtale-1b-f16.gguf newtale-1b-q4_k_m.gguf Q4_K_M")
     print()
     print("  # Run:")
-    print("  ./llama-cli -m newtale-1b-q4_k_m.gguf -p \"Once upon a time\" -n 200")
+    print('  ./llama-cli -m newtale-1b-q4_k_m.gguf -p "Once upon a time" -n 200')
 
 
 if __name__ == "__main__":

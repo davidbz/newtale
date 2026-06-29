@@ -22,7 +22,9 @@ from data.collator import DataCollatorForCLM
 from model.transformer import NewTaleForCausalLM
 from tokenizer.tokenizer import NewTaleTokenizer
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 _logger = logging.getLogger(__name__)
 
 _FEW_SHOT_PROMPTS = [
@@ -31,7 +33,9 @@ _FEW_SHOT_PROMPTS = [
 ]
 
 
-def load_model_from_checkpoint(checkpoint_path: Path, config_path: Path) -> NewTaleForCausalLM:
+def load_model_from_checkpoint(
+    checkpoint_path: Path, config_path: Path
+) -> NewTaleForCausalLM:
     """Load a consolidated (non-sharded) model checkpoint."""
     config = load_config(config_path)
     model = NewTaleForCausalLM(config.model)
@@ -71,7 +75,12 @@ def compute_perplexity(
                     ids = [*self._tok.encode(text), self._tok.eos_id]
                     buffer.extend(ids)
                     while len(buffer) >= self._seq_len:
-                        yield {"input_ids": torch.tensor(buffer[: self._seq_len], dtype=torch.long), "source": "eval"}
+                        yield {
+                            "input_ids": torch.tensor(
+                                buffer[: self._seq_len], dtype=torch.long
+                            ),
+                            "source": "eval",
+                        }
                         buffer = buffer[self._seq_len :]
 
     dataset = JsonlDataset(eval_file, tokenizer, seq_length)
@@ -115,7 +124,9 @@ def generate(
         next_id = int(logits[0, -1].argmax())
         if next_id == tokenizer.eos_id:
             break
-        input_ids = torch.cat([input_ids, torch.tensor([[next_id]], device=device)], dim=1)
+        input_ids = torch.cat(
+            [input_ids, torch.tensor([[next_id]], device=device)], dim=1
+        )
 
     generated = input_ids[0, len(ids) :].tolist()
     return tokenizer.decode(generated)

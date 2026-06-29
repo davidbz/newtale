@@ -29,7 +29,9 @@ class WeightedDatasetMixer:
             raise ValueError(f"Weights must sum to 1.0, got {sum(weights):.4f}")
 
         self._rng = random.Random(seed)
-        self._iters: list[Iterator[Any]] = [iter(itertools.cycle(ds)) for ds in datasets]
+        self._iters: list[Iterator[Any]] = [
+            iter(itertools.cycle(ds)) for ds in datasets
+        ]
         self._targets = weights
         self._names = names
         self._token_counts = [0] * len(datasets)

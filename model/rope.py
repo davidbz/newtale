@@ -5,14 +5,18 @@ import torch.nn as nn
 
 
 class RotaryEmbedding(nn.Module):
-    def __init__(self, head_dim: int, max_seq_len: int, theta: float = 10_000.0) -> None:
+    def __init__(
+        self, head_dim: int, max_seq_len: int, theta: float = 10_000.0
+    ) -> None:
         super().__init__()
         inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2).float() / head_dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self._build_cache(max_seq_len)
 
     def _build_cache(self, seq_len: int) -> None:
-        t = torch.arange(seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)  # type: ignore[attr-defined]
+        t = torch.arange(
+            seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype
+        )  # type: ignore[attr-defined]
         freqs = torch.outer(t, self.inv_freq)  # type: ignore[attr-defined]
         emb = torch.cat([freqs, freqs], dim=-1)
         self.register_buffer("cos_cached", emb.cos(), persistent=False)

@@ -55,7 +55,9 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
 
         hf_datasets = []
         for src in self._sources:
-            ds = load_dataset(src.path, name=src.subset, split=src.split, streaming=True)
+            ds = load_dataset(
+                src.path, name=src.subset, split=src.split, streaming=True
+            )
             ds = ds.select_columns([src.text_column])
             if src.text_column != "text":
                 ds = ds.rename_column(src.text_column, "text")
@@ -71,7 +73,9 @@ class PackedStreamingDataset(IterableDataset):  # type: ignore[type-arg]
         )
 
         source_dedup: dict[str, ExactDedup | None] = {
-            src.name: ExactDedup(max_entries=self._dedup_max_entries) if src.dedup else None
+            src.name: ExactDedup(max_entries=self._dedup_max_entries)
+            if src.dedup
+            else None
             for src in self._sources
         }
 

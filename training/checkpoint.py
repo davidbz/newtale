@@ -85,11 +85,17 @@ class CheckpointManager:
     ) -> dict[str, Any]:
         ckpt_dir = Path(path)
         model.load_state_dict(torch.load(ckpt_dir / "model.pt", weights_only=True))
-        optimizer.load_state_dict(torch.load(ckpt_dir / "optimizer.pt", weights_only=True))
-        scheduler.load_state_dict(torch.load(ckpt_dir / "scheduler.pt", weights_only=True))
+        optimizer.load_state_dict(
+            torch.load(ckpt_dir / "optimizer.pt", weights_only=True)
+        )
+        scheduler.load_state_dict(
+            torch.load(ckpt_dir / "scheduler.pt", weights_only=True)
+        )
         rng_states = torch.load(ckpt_dir / "rng_state.pt", weights_only=False)
         restore_rng_states(rng_states)
-        trainer_state: dict[str, Any] = json.loads((ckpt_dir / "trainer_state.json").read_text())
+        trainer_state: dict[str, Any] = json.loads(
+            (ckpt_dir / "trainer_state.json").read_text()
+        )
         self.best_val_loss = trainer_state.get("best_val_loss", float("inf"))
         return trainer_state
 
@@ -143,7 +149,11 @@ class CheckpointManager:
     def _rotate(self) -> None:
         """Delete oldest checkpoints beyond save_total_limit."""
         pattern = sorted(
-            [d for d in self.output_dir.iterdir() if d.name.startswith("checkpoint-") and d.name != "checkpoint-best"],
+            [
+                d
+                for d in self.output_dir.iterdir()
+                if d.name.startswith("checkpoint-") and d.name != "checkpoint-best"
+            ],
             key=lambda d: int(d.name.split("-")[1]),
         )
         while len(pattern) > self.save_total_limit:
@@ -154,10 +164,17 @@ class CheckpointManager:
     # ------------------------------------------------------------------
 
     def find_latest(self) -> str | None:
-        candidates = [
-            d for d in self.output_dir.iterdir()
-            if d.is_dir() and d.name.startswith("checkpoint-") and d.name != "checkpoint-best"
-        ] if self.output_dir.exists() else []
+        candidates = (
+            [
+                d
+                for d in self.output_dir.iterdir()
+                if d.is_dir()
+                and d.name.startswith("checkpoint-")
+                and d.name != "checkpoint-best"
+            ]
+            if self.output_dir.exists()
+            else []
+        )
         if not candidates:
             return None
         latest = max(candidates, key=lambda d: int(d.name.split("-")[1]))

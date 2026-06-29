@@ -83,7 +83,8 @@ def main() -> None:
         batch_size=config.training.per_device_train_batch_size,
         collate_fn=DataCollatorForCLM(),
         num_workers=config.training.dataloader_num_workers,
-        pin_memory=torch.cuda.is_available() and config.training.dataloader_num_workers > 0,
+        pin_memory=torch.cuda.is_available()
+        and config.training.dataloader_num_workers > 0,
         prefetch_factor=2 if config.training.dataloader_num_workers > 0 else None,
     )
 
@@ -102,7 +103,8 @@ def main() -> None:
         batch_size=config.training.per_device_train_batch_size,
         collate_fn=DataCollatorForCLM(),
         num_workers=config.training.dataloader_num_workers,
-        pin_memory=torch.cuda.is_available() and config.training.dataloader_num_workers > 0,
+        pin_memory=torch.cuda.is_available()
+        and config.training.dataloader_num_workers > 0,
     )
 
     # ------------------------------------------------------------------
@@ -149,7 +151,9 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Checkpoint manager
     # ------------------------------------------------------------------
-    ckpt_manager = CheckpointManager(config.training.output_dir, config.training.save_total_limit)
+    ckpt_manager = CheckpointManager(
+        config.training.output_dir, config.training.save_total_limit
+    )
     start_step = 0
     resume_path = config.training.resume_from_checkpoint or ckpt_manager.find_latest()
 

@@ -11,7 +11,9 @@ if TYPE_CHECKING:
     from config import TrainingConfig
 
 
-def build_scheduler(optimizer: torch.optim.Optimizer, config: TrainingConfig) -> LambdaLR:
+def build_scheduler(
+    optimizer: torch.optim.Optimizer, config: TrainingConfig
+) -> LambdaLR:
     """Linear warmup followed by cosine decay to min_lr_ratio * lr."""
     warmup = config.warmup_steps
     max_steps = config.max_steps
