@@ -17,6 +17,7 @@ data:
       weight: 0.70
       name: fineweb-edu
       split: train
+      subset: sample-10BT
     - path: bigcode/starcoderdata
       weight: 0.30
       name: starcoderdata

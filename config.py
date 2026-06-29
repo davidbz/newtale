@@ -35,6 +35,7 @@ class DataSourceConfig(BaseModel):
     weight: float
     name: str
     split: str = "train"
+    subset: str | None = None  # HF dataset config name (e.g. "sample-10BT" for fineweb-edu)
 
 
 class DataConfig(BaseModel):

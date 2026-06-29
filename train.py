@@ -19,8 +19,7 @@ from torch.utils.data import DataLoader
 
 from config import load_config
 from data.collator import DataCollatorForCLM
-from data.dataset import PackedStreamingDataset, make_streaming_dataset
-from data.mixing import WeightedDatasetMixer
+from data.dataset import PackedStreamingDataset
 from model.transformer import NewTaleForCausalLM
 from tokenizer.tokenizer import NewTaleTokenizer
 from training.checkpoint import CheckpointManager
@@ -69,21 +68,14 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Datasets
     # ------------------------------------------------------------------
-    hf_datasets = [
-        make_streaming_dataset(src.path, split=src.split)
-        for src in config.data.sources
-    ]
-    mixer = WeightedDatasetMixer(
-        datasets=hf_datasets,
-        weights=[src.weight for src in config.data.sources],
-        names=[src.name for src in config.data.sources],
-        seed=config.data.seed,
-    )
     train_dataset = PackedStreamingDataset(
-        mixer=mixer,
+        sources=config.data.sources,
         tokenizer=tokenizer,
         seq_length=config.data.seq_length,
         seed=config.data.seed,
+        rank=rank,
+        world_size=world_size,
+        num_workers=config.training.dataloader_num_workers,
     )
     train_loader = DataLoader(
         train_dataset,
@@ -94,18 +86,14 @@ def main() -> None:
         prefetch_factor=2 if config.training.dataloader_num_workers > 0 else None,
     )
 
-    # Eval loader: smaller fixed dataset — reuse same source with no dedup for simplicity
-    eval_mixer = WeightedDatasetMixer(
-        datasets=hf_datasets,
-        weights=[src.weight for src in config.data.sources],
-        names=[src.name for src in config.data.sources],
-        seed=config.data.seed + 999,
-    )
     eval_dataset = PackedStreamingDataset(
-        mixer=eval_mixer,
+        sources=config.data.sources,
         tokenizer=tokenizer,
         seq_length=config.data.seq_length,
         seed=config.data.seed + 999,
+        rank=rank,
+        world_size=world_size,
+        num_workers=config.training.dataloader_num_workers,
     )
     eval_loader = DataLoader(
         eval_dataset,
