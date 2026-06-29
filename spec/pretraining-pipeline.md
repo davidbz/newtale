@@ -15,6 +15,8 @@ newtale/
 ├── configs/
 │   ├── 3b.yaml                 # production config (~3.1B params)
 │   ├── 1b.yaml                 # GPU dev config
+│   ├── 1b-single-gpu.yaml      # single A10G run (1B, sample-10BT subset)
+│   ├── small.yaml              # ~75M params, quick demo run
 │   ├── tiny.yaml               # CPU smoke-test (2 layers, hidden 128)
 │   ├── deepspeed_zero2.json    # ZeRO-2 template (generated at runtime)
 │   └── deepspeed_zero3.json    # ZeRO-3 template
@@ -27,7 +29,7 @@ newtale/
 ├── data/
 │   ├── __init__.py
 │   ├── preprocessing.py        # normalize, filter, HTML strip, repetition detect, hash dedup
-│   ├── dataset.py              # StreamingTextDataset + PackedStreamingDataset
+│   ├── dataset.py              # PackedStreamingDataset (lazy sharded loading)
 │   ├── mixing.py               # WeightedDatasetMixer (token-budgeted)
 │   └── collator.py             # DataCollatorForCLM
 ├── tokenizer/
@@ -44,7 +46,8 @@ newtale/
 │   └── trainer.py              # Trainer: training loop, eval, grad accum, NaN detection
 ├── scripts/
 │   ├── launch_training.sh      # torchrun / deepspeed launcher
-│   └── prepare_data.sh         # shard data to local disk before training
+│   ├── prepare_data.sh         # shard data to local disk before training
+│   └── convert_to_hf.py        # checkpoint → HF LLaMA safetensors → GGUF
 ├── config.py                   # top-level Config (pydantic) + YAML loader
 ├── train.py                    # entrypoint: python train.py --config configs/3b.yaml
 ├── eval.py                     # perplexity + prompt completions
@@ -75,11 +78,21 @@ class ModelConfig(BaseModel):
     rms_norm_eps: float = 1e-5
     tie_word_embeddings: bool = False
 
+class DataSourceConfig(BaseModel):
+    path: str
+    weight: float
+    name: str
+    split: str = "train"
+    subset: str | None = None       # HF dataset config name passed as `name` to load_dataset
+    text_column: str = "text"       # column that holds the document text (e.g. "content" for starcoderdata)
+    dedup: bool = False             # enable exact-hash dedup for this source (opt-in)
+
 class DataConfig(BaseModel):
     tokenizer_dir: str
-    sources: list[dict]          # [{path, weight, name}, ...]
+    sources: list[DataSourceConfig]
     seq_length: int = 4096
     seed: int = 42
+    dedup_max_entries: int = 500_000  # per-source dedup cap; best-effort beyond this
 
 class TrainingConfig(BaseModel):
     output_dir: str
@@ -102,6 +115,7 @@ class TrainingConfig(BaseModel):
     save_total_limit: int = 3
     resume_from_checkpoint: str | None = None
     seed: int = 42
+    dataloader_num_workers: int = 4          # set 0 on RAM-constrained instances
 
 class LoggingConfig(BaseModel):
     use_wandb: bool = False
@@ -155,9 +169,11 @@ FineWeb-Edu documents average ~1 500 tokens; StarCoder files can be as short as 
 
 Taking the first N bytes from a streaming HF dataset is biased by internal shard order. The tokenizer trainer interleaves multiple shards from each dataset (round-robin) before feeding the byte counter, ensuring the vocabulary reflects a uniform draw across the corpus.
 
-### 2.9 Dedup — exact hash set
+### 2.9 Dedup — opt-in, bounded exact hash set
 
-Use `xxhash.xxh64(text.encode()).hexdigest()` → Python `set`. This is exact dedup, not a bloom filter. For near-dedup at scale, `datasketch` MinHash is a separate optional step.
+Dedup is **off by default** (`dedup: false` on each `DataSourceConfig`). Pre-deduped public datasets (FineWeb-Edu, StarCoderData) don't need it; enable it for raw custom sources.
+
+When enabled, `ExactDedup(max_entries=N)` hashes documents with `xxhash.xxh64`. Beyond `N` entries the set stops growing — dedup continues best-effort on the already-hashed portion, keeping RAM bounded. Each source gets its own independent dedup instance. For near-dedup at scale, `datasketch` MinHash is a separate optional offline step.
 
 ---
 
@@ -287,10 +303,14 @@ python -m tokenizer.train_tokenizer \
 
 ### 5.1 Sources and Mix
 
-| Dataset                         | HF Path                          | Default weight |
-|---------------------------------|----------------------------------|----------------|
-| FineWeb-Edu (sample-10BT)       | `HuggingFaceFW/fineweb-edu`      | 0.70           |
-| StarCoder data (code)           | `bigcode/starcoderdata`          | 0.30           |
+| Dataset           | HF Path                       | `subset`      | `text_column` | Weight |
+|-------------------|-------------------------------|---------------|---------------|--------|
+| FineWeb-Edu       | `HuggingFaceFW/fineweb-edu`   | `sample-10BT` | `text`        | 0.70   |
+| StarCoder data    | `bigcode/starcoderdata`       | *(none)*      | `content`     | 0.30   |
+
+`subset` maps to the HF `name` parameter of `load_dataset`. For single-GPU runs, `sample-10BT` is the pre-packaged 10B-token slice of FineWeb-Edu (~400 parquet files vs ~2400 in the full dataset) — significantly lower RAM footprint.
+
+`text_column` specifies the field name for the document text. The pipeline normalises it to `"text"` internally via `rename_column` before tokenisation. Always set `text_column` explicitly for datasets that don't use `"text"` (e.g. StarCoderData uses `"content"`).
 
 Weights are token-budgeted: the mixer tracks tokens yielded per source and always
 pulls from the source with the largest token deficit vs its target fraction.
@@ -333,12 +353,40 @@ class WeightedDatasetMixer:
 
 ### 5.4 Tokenisation and Packing (`data/dataset.py`)
 
-`PackedStreamingDataset` wraps the mixer:
-- Tokenizes each document, appends `</s>` (EOS)
-- Appends tokens to a rolling buffer; tracks source tag per token
-- Yields non-overlapping `seq_length=4096` chunks (no padding — 100% token utilisation)
-- Each yielded item: `{"input_ids": tensor, "source": dominant_source_name}`
-- Per-worker RNG re-seeding via `get_worker_info().id` for independent streams
+`PackedStreamingDataset` takes `sources: list[DataSourceConfig]` directly — **not** a pre-built mixer. HF datasets are loaded lazily inside `__iter__`, after the DataLoader has forked workers, so each worker only buffers its own shard.
+
+**Loading sequence per source (inside `__iter__`):**
+```python
+ds = load_dataset(src.path, name=src.subset, split=src.split, streaming=True)
+ds = ds.select_columns([src.text_column])   # column pruning at parquet read time — biggest RAM win
+if src.text_column != "text":
+    ds = ds.rename_column(src.text_column, "text")  # normalise to "text" for downstream code
+if total_shards > 1:
+    ds = ds.shard(num_shards=total_shards, index=shard_index)
+```
+
+**Two-dimensional sharding** ensures every (rank, worker) pair covers a disjoint slice of parquet files:
+```
+total_shards  = world_size × effective_num_workers
+shard_index   = rank × effective_num_workers + worker_id
+```
+With `num_workers=0` this collapses to rank-only sharding. A `WeightedDatasetMixer` is then constructed per-worker over the sharded sources.
+
+**Per-source dedup** (opt-in via `dedup: bool` on `DataSourceConfig`):
+- Each source that sets `dedup: true` gets its own `ExactDedup(max_entries=dedup_max_entries)`
+- Beyond `dedup_max_entries` the hash set stops growing — dedup continues best-effort on already-seen hashes
+- Dedup is off by default (`dedup: false`) — pre-deduped public datasets don't need it
+
+**Per token in the rolling buffer, source tag is tracked.** Each yielded chunk majority-votes its dominant source:
+```python
+{"input_ids": tensor(seq_length,), "source": dominant_source_name}
+```
+
+**RAM discipline notes:**
+- `select_columns` prunes at pyarrow reader level — other columns are never read from disk
+- Datasets are constructed after worker fork — no shared buffers between workers
+- `dedup_max_entries` caps the hash set to a fixed ceiling (~25 MB at 500k entries)
+- Set `dataloader_num_workers: 0` on RAM-constrained instances (no worker forking overhead)
 
 ### 5.5 Collation (`data/collator.py`)
 
@@ -351,7 +399,7 @@ class DataCollatorForCLM:
         return {"input_ids": input_ids, "labels": input_ids.clone(), "sources": sources}
 ```
 
-DataLoader config: `num_workers=4`, `pin_memory=True`, `prefetch_factor=2`.
+DataLoader config: `num_workers` from config (default 4, set 0 for RAM-constrained), `pin_memory=True` when `num_workers > 0`, `prefetch_factor=2` when `num_workers > 0`.
 
 ---
 
@@ -539,6 +587,12 @@ python eval.py \
 
 ## 11. Launching
 
+### Single-GPU (A10G, 1B model)
+```bash
+python train.py --config configs/1b-single-gpu.yaml
+```
+Uses `fineweb-edu` with `subset: sample-10BT` (10B token sample, far fewer shards than the full dataset — lower RAM footprint). Set `dataloader_num_workers: 0` on RAM-constrained instances.
+
 ### Single-node, 8 GPU (DeepSpeed)
 ```bash
 bash scripts/launch_training.sh \
@@ -564,6 +618,35 @@ python -m tokenizer.train_tokenizer \
     --vocab_size 50000 \
     --train_size_gb 10
 ```
+
+### Checkpoint → HuggingFace → GGUF
+```bash
+# Convert checkpoint to HF LLaMA safetensors format
+python scripts/convert_to_hf.py \
+    --checkpoint checkpoints/1b-single/checkpoint-500 \
+    --config     configs/1b-single-gpu.yaml \
+    --output     hf-model/
+
+# Verify it loads
+python -c "from transformers import AutoModelForCausalLM; m = AutoModelForCausalLM.from_pretrained('hf-model/'); print(m.config)"
+
+# Convert to GGUF (from llama.cpp repo)
+python convert_hf_to_gguf.py hf-model/ --outfile model-f16.gguf --outtype bf16
+./llama-quantize model-f16.gguf model-q4_k_m.gguf Q4_K_M
+./llama-cli -m model-q4_k_m.gguf -p "Once upon a time" -n 200
+```
+
+Weight key remapping (`ours → HF LLaMA`):
+| Our key | HF key |
+|---|---|
+| `embed_tokens.weight` | `model.embed_tokens.weight` |
+| `layers.{i}.attn_norm.weight` | `model.layers.{i}.input_layernorm.weight` |
+| `layers.{i}.attn.{q,k,v,o}_proj.weight` | `model.layers.{i}.self_attn.{q,k,v,o}_proj.weight` |
+| `layers.{i}.ffn_norm.weight` | `model.layers.{i}.post_attention_layernorm.weight` |
+| `layers.{i}.ffn.{gate,up,down}_proj.weight` | `model.layers.{i}.mlp.{gate,up,down}_proj.weight` |
+| `norm.weight` | `model.norm.weight` |
+| `lm_head.weight` | `lm_head.weight` |
+| `rotary.*` | *(skipped — recomputed at load time)* |
 
 ---
 
