@@ -1,0 +1,17 @@
+torch>=2.2
+pydantic>=2.0
+transformers
+datasets
+tokenizers
+deepspeed
+accelerate
+pyyaml
+xxhash
+tensorboard
+tqdm
+safetensors
+
+# Optional — install manually
+# flash-attn>=2.1
+# wandb
+# datasketch

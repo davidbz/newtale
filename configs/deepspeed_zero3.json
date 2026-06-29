@@ -1,0 +1,17 @@
+{
+  "train_micro_batch_size_per_gpu": 2,
+  "gradient_accumulation_steps": 16,
+  "gradient_clipping": 1.0,
+  "bf16": {
+    "enabled": true
+  },
+  "zero_optimization": {
+    "stage": 3,
+    "allgather_partitions": true,
+    "reduce_scatter": true,
+    "overlap_comm": true,
+    "stage3_prefetch_bucket_size": 50000000,
+    "stage3_param_persistence_threshold": 1000000
+  },
+  "steps_per_print": 10
+}
