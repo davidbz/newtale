@@ -43,4 +43,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - uses: jakebailey/pyright-action@v2
+      - uses: jakebailey/pyright-action@v3
+        with:
+          # Tell pyright to use the .venv created by uv
+          extra-args: --venvpath . --venv .venv
