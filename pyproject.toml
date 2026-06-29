@@ -34,8 +34,6 @@ indent-style = "space"
 
 [tool.pyright]
 pythonVersion = "3.12"
-venvPath = "/home/vscode"
-venv = ".venv"
 typeCheckingMode = "standard"
 reportMissingImports = true
 reportMissingTypeStubs = false
