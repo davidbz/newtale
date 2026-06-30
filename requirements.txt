@@ -1,0 +1,23 @@
+torch>=2.4
+pydantic>=2.0
+transformers
+datasets
+tokenizers
+deepspeed
+accelerate
+pyyaml
+xxhash
+tensorboard
+tqdm
+safetensors
+
+# Dev / testing
+pytest>=8.0
+pytest-xdist
+
+# Optional — install manually for full functionality
+# flash-attn>=2.6          # FlashAttention-3 (H100/H200 recommended)
+# wandb                    # Experiment tracking
+# lm-eval                  # Benchmark harness (scripts/eval_benchmarks.py)
+# torchao                  # FP8 training (fp8_training: true in config)
+# datasketch               # MinHash near-dedup
