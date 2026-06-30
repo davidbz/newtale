@@ -94,7 +94,7 @@ def train(output_dir: Path, vocab_size: int, train_size_gb: float) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a byte-level BPE tokenizer")
     parser.add_argument("--output_dir", type=Path, required=True)
-    parser.add_argument("--vocab_size", type=int, default=50_000)
+    parser.add_argument("--vocab_size", type=int, default=100_000)
     parser.add_argument("--train_size_gb", type=float, default=10.0)
     args = parser.parse_args()
     train(args.output_dir, args.vocab_size, args.train_size_gb)

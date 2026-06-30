@@ -32,8 +32,13 @@ known-first-party = ["newtale"]
 quote-style = "double"
 indent-style = "space"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-x -q"
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 reportMissingImports = true
 reportMissingTypeStubs = false
+ignore = ["tests/**"]  # pytest not in pyright venv; test files opted out

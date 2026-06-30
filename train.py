@@ -1,4 +1,4 @@
-"""NewTale 3B pretraining entrypoint.
+"""NewTale pretraining entrypoint.
 
 Usage:
     python train.py --config configs/3b.yaml
@@ -23,7 +23,12 @@ from data.dataset import PackedStreamingDataset
 from model.transformer import NewTaleForCausalLM
 from tokenizer.tokenizer import NewTaleTokenizer
 from training.checkpoint import CheckpointManager
-from training.distributed import init_deepspeed, setup_distributed, wrap_fsdp
+from training.distributed import (
+    build_device_mesh,
+    init_deepspeed,
+    setup_distributed,
+    wrap_fsdp,
+)
 from training.logging_utils import MetricsLogger
 from training.optimizer import build_optimizer
 from training.scheduler import build_scheduler
@@ -108,7 +113,7 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
-    # Model
+    # Model creation
     # ------------------------------------------------------------------
     use_deepspeed = config.training.distributed_backend == "deepspeed"
 
@@ -138,13 +143,30 @@ def main() -> None:
     param_count = sum(p.numel() for p in model.parameters())
     _logger.info("Model parameters: %.2fB", param_count / 1e9)
 
-    if config.training.compile:
-        _logger.info("Compiling model with torch.compile...")
-        model = cast("nn.Module", torch.compile(model, mode="reduce-overhead"))
+    # ------------------------------------------------------------------
+    # Backend-specific wrapping: FSDP2 → FP8 (must precede compile)
+    # ------------------------------------------------------------------
+    if not use_deepspeed:
+        if torch.cuda.is_available() and world_size > 1:
+            device_mesh = build_device_mesh(world_size)
+            wrap_fsdp(model, inner_modules=list(model.layers), device_mesh=device_mesh)
+        elif torch.cuda.is_available():
+            model = model.bfloat16()  # type: ignore[assignment]
 
-    # ------------------------------------------------------------------
-    # Optimiser + scheduler
-    # ------------------------------------------------------------------
+        if config.training.fp8_training:
+            try:
+                from torchao.float8 import convert_to_float8_training  # type: ignore[import-untyped]
+
+                model = convert_to_float8_training(model)  # type: ignore[assignment]
+                _logger.info("FP8 training enabled via torchao")
+            except ImportError:
+                _logger.warning("torchao not installed; fp8_training=True ignored")
+
+    # compile applies to both backends (FSDP2 already applied above)
+    if config.training.compile:
+        _logger.info("Compiling model (mode=%s)...", config.training.compile_mode)
+        model = cast("nn.Module", torch.compile(model, mode=config.training.compile_mode))
+
     optimizer = build_optimizer(model, config.training)  # type: ignore[arg-type]
     scheduler = build_scheduler(optimizer, config.training)
 
@@ -165,11 +187,18 @@ def main() -> None:
         tensorboard_dir=config.logging.tensorboard_dir,
         use_wandb=config.logging.use_wandb,
         wandb_project=config.logging.wandb_project,
+        run_name=config.logging.wandb_run_name,
     )
 
     # ------------------------------------------------------------------
     # Trainer
     # ------------------------------------------------------------------
+    tokens_per_step = (
+        config.training.per_device_train_batch_size
+        * world_size
+        * config.training.gradient_accumulation_steps
+        * config.data.seq_length
+    )
     trainer = Trainer(
         config=config.training,
         train_loader=train_loader,
@@ -177,6 +206,7 @@ def main() -> None:
         checkpoint_manager=ckpt_manager,
         metrics_logger=metrics_logger,
         start_step=start_step,
+        tokens_per_step=tokens_per_step,
     )
 
     if use_deepspeed:
@@ -188,10 +218,6 @@ def main() -> None:
             trainer.start_step = start_step
         trainer.train_deepspeed(engine)
     else:
-        if torch.cuda.is_available() and world_size > 1:
-            model = wrap_fsdp(model)  # type: ignore[assignment]
-        elif torch.cuda.is_available():
-            model = model.cuda().bfloat16()  # type: ignore[assignment]
         if resume_path:
             state = ckpt_manager.load_fsdp(resume_path, model, optimizer, scheduler)
             start_step = state.get("global_step", 0)

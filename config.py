@@ -10,14 +10,14 @@ if TYPE_CHECKING:
 
 
 class ModelConfig(BaseModel):
-    vocab_size: int = 50_000
+    vocab_size: int = 100_000
     hidden_size: int = 3072
     num_layers: int = 28
     num_attention_heads: int = 24
     num_key_value_heads: int = 8
     intermediate_size: int = 8192
     max_position_embeddings: int = 4096
-    rope_theta: float = 10_000.0
+    rope_theta: float = 500_000.0
     rms_norm_eps: float = 1e-5
     tie_word_embeddings: bool = False
 
@@ -71,6 +71,9 @@ class TrainingConfig(BaseModel):
     zero_stage: int = 2
     gradient_checkpointing: bool = True
     compile: bool = True
+    compile_mode: str = "reduce-overhead"  # or "max-autotune" for production runs
+    fp8_training: bool = False  # requires torchao; H100/H200/B-series only
+    profile_steps: int | None = None  # export chrome trace for this many steps after warmup
     logging_steps: int = 10
     eval_steps: int = 500
     save_steps: int = 1000
@@ -83,6 +86,7 @@ class TrainingConfig(BaseModel):
 class LoggingConfig(BaseModel):
     use_wandb: bool = False
     wandb_project: str = "newtale"
+    wandb_run_name: str | None = None
     tensorboard_dir: str | None = None
 
 
