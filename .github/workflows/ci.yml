@@ -42,6 +42,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          uv venv
           uv pip install torch --index-url https://download.pytorch.org/whl/cpu
           uv pip install -r requirements.txt
 
@@ -61,6 +62,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          uv venv
           uv pip install torch --index-url https://download.pytorch.org/whl/cpu
           uv pip install -r requirements.txt
 
