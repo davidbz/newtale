@@ -167,7 +167,9 @@ def main() -> None:
     # compile applies to both backends (FSDP2 already applied above)
     if config.training.compile:
         _logger.info("Compiling model (mode=%s)...", config.training.compile_mode)
-        model = cast("nn.Module", torch.compile(model, mode=config.training.compile_mode))
+        model = cast(
+            "nn.Module", torch.compile(model, mode=config.training.compile_mode)
+        )
 
     optimizer = build_optimizer(model, config.training)  # type: ignore[arg-type]
     scheduler = build_scheduler(optimizer, config.training)

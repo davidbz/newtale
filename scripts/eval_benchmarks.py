@@ -8,6 +8,7 @@ Usage:
         --tasks hellaswag,arc_easy,arc_challenge,winogrande,mmlu \\
         --output results.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -100,7 +101,9 @@ class NewTaleLMAdapter:
             max_new = gen_kwargs.get("max_new_tokens", 64)
             generated = list(ids)
             for _ in range(max_new):
-                inp = torch.tensor([generated[-self._max_length :]], device=self._device)
+                inp = torch.tensor(
+                    [generated[-self._max_length :]], device=self._device
+                )
                 _, logits = self._model(inp)
                 next_tok = logits[0, -1].argmax().item()
                 generated.append(int(next_tok))
@@ -143,7 +146,11 @@ def main() -> None:
     print(f"Results written to {args.output}")
 
     for task, res in results.get("results", {}).items():
-        acc = res.get("acc,none") or res.get("acc_norm,none") or res.get("word_perplexity,none")
+        acc = (
+            res.get("acc,none")
+            or res.get("acc_norm,none")
+            or res.get("word_perplexity,none")
+        )
         print(f"  {task}: {acc}")
 
 

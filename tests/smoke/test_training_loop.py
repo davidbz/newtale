@@ -4,6 +4,7 @@ These tests require no GPU and no network access. They verify that the
 training loop runs end-to-end, loss decreases, and checkpoint save+load
 resumes correctly.
 """
+
 from __future__ import annotations
 
 import tempfile

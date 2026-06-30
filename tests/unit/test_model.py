@@ -1,4 +1,5 @@
 """Unit tests for model/transformer.py — run on CPU, no GPU required."""
+
 from __future__ import annotations
 
 import pytest

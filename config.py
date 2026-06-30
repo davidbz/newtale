@@ -73,7 +73,9 @@ class TrainingConfig(BaseModel):
     compile: bool = True
     compile_mode: str = "reduce-overhead"  # or "max-autotune" for production runs
     fp8_training: bool = False  # requires torchao; H100/H200/B-series only
-    profile_steps: int | None = None  # export chrome trace for this many steps after warmup
+    profile_steps: int | None = (
+        None  # export chrome trace for this many steps after warmup
+    )
     logging_steps: int = 10
     eval_steps: int = 500
     save_steps: int = 1000
