@@ -20,7 +20,7 @@ def test_weights_sum_to_one() -> None:
 
 
 def test_weights_not_summing_raises() -> None:
-    with pytest.raises(ValidationError, match="sum to 1.0"):
+    with pytest.raises(ValidationError, match=r"sum to 1\.0"):
         DataConfig(
             tokenizer_dir="tok/",
             sources=[_source(0.5, "a"), _source(0.3, "b")],

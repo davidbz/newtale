@@ -155,7 +155,9 @@ def main() -> None:
 
         if config.training.fp8_training:
             try:
-                from torchao.float8 import convert_to_float8_training  # type: ignore[import-untyped]
+                from torchao.float8 import (
+                    convert_to_float8_training,  # type: ignore[import-untyped]
+                )
 
                 model = convert_to_float8_training(model)  # type: ignore[assignment]
                 _logger.info("FP8 training enabled via torchao")

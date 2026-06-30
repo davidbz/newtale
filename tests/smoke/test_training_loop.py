@@ -7,8 +7,10 @@ resumes correctly.
 from __future__ import annotations
 
 import tempfile
-from collections.abc import Generator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import pytest
 import torch
@@ -21,7 +23,6 @@ from training.logging_utils import MetricsLogger
 from training.optimizer import build_optimizer
 from training.scheduler import build_scheduler
 from training.trainer import Trainer
-
 
 TINY_MODEL = ModelConfig(
     vocab_size=256,

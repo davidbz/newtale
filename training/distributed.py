@@ -9,8 +9,9 @@ import torch
 import torch.distributed as dist
 
 if TYPE_CHECKING:
-    from config import TrainingConfig
     from torch.distributed.device_mesh import DeviceMesh
+
+    from config import TrainingConfig
 
 
 def setup_distributed() -> tuple[int, int, int]:

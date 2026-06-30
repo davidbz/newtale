@@ -126,7 +126,7 @@ def main() -> None:
     try:
         import lm_eval  # type: ignore[import-untyped]
     except ImportError:
-        raise SystemExit("lm-eval not installed. Run: pip install lm-eval")
+        raise SystemExit("lm-eval not installed. Run: pip install lm-eval") from None
 
     model, tokenizer = _load_model(args.config, args.checkpoint)
     adapter = NewTaleLMAdapter(model, tokenizer)
