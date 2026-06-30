@@ -18,7 +18,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from config import load_config
-from data.collator import DataCollatorForCLM
+from data.collator import collate_for_clm
 from data.dataset import PackedStreamingDataset
 from model.transformer import NewTaleForCausalLM
 from tokenizer.tokenizer import NewTaleTokenizer
@@ -86,7 +86,7 @@ def main() -> None:
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.training.per_device_train_batch_size,
-        collate_fn=DataCollatorForCLM(),
+        collate_fn=collate_for_clm,
         num_workers=config.training.dataloader_num_workers,
         pin_memory=torch.cuda.is_available()
         and config.training.dataloader_num_workers > 0,
@@ -106,7 +106,7 @@ def main() -> None:
     eval_loader = DataLoader(
         eval_dataset,
         batch_size=config.training.per_device_train_batch_size,
-        collate_fn=DataCollatorForCLM(),
+        collate_fn=collate_for_clm,
         num_workers=config.training.dataloader_num_workers,
         pin_memory=torch.cuda.is_available()
         and config.training.dataloader_num_workers > 0,

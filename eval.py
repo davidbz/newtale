@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import DataLoader, IterableDataset
 
 from config import load_config
-from data.collator import DataCollatorForCLM
+from data.collator import collate_for_clm
 from model.transformer import NewTaleForCausalLM
 from tokenizer.tokenizer import NewTaleTokenizer
 
@@ -84,7 +84,7 @@ def compute_perplexity(
                         buffer = buffer[self._seq_len :]
 
     dataset = JsonlDataset(eval_file, tokenizer, seq_length)
-    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=DataCollatorForCLM())
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_for_clm)
 
     model.eval()
     total_loss = 0.0

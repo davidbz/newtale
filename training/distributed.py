@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -54,12 +52,6 @@ def generate_deepspeed_config(config: TrainingConfig) -> dict[str, Any]:
         "zero_optimization": zero_config,
         "steps_per_print": config.logging_steps,
     }
-
-
-def write_deepspeed_config(config: TrainingConfig, path: str | Path) -> Path:
-    path = Path(path)
-    path.write_text(json.dumps(generate_deepspeed_config(config), indent=2))
-    return path
 
 
 def init_deepspeed(
