@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -30,6 +31,7 @@ class Trainer:
         checkpoint_manager: CheckpointManager,
         metrics_logger: MetricsLogger,
         start_step: int = 0,
+        tokens_per_step: int = 0,
     ) -> None:
         self.config = config
         self.train_loader = train_loader
@@ -37,6 +39,7 @@ class Trainer:
         self.ckpt = checkpoint_manager
         self.log = metrics_logger
         self.start_step = start_step
+        self.tokens_per_step = tokens_per_step
 
     # ------------------------------------------------------------------
     # DeepSpeed training loop
@@ -46,6 +49,9 @@ class Trainer:
         cfg = self.config
         data_iter = iter(self.train_loader)
         nan_count = 0
+        tokens_seen = self.start_step * self.tokens_per_step
+        step_start = time.perf_counter()
+        prof = self._maybe_start_profiler()
 
         for global_step in range(self.start_step, cfg.max_steps):
             engine.train()
@@ -76,13 +82,19 @@ class Trainer:
             nan_count = 0
 
             engine.step()
+            tokens_seen += self.tokens_per_step
 
             if global_step % cfg.logging_steps == 0:
+                elapsed = time.perf_counter() - step_start
+                tps = self.tokens_per_step * cfg.logging_steps / max(elapsed, 1e-6)
+                step_start = time.perf_counter()
                 self.log.log(
                     global_step,
                     {
                         "loss": step_loss / cfg.gradient_accumulation_steps,
                         "lr": engine.get_lr()[0],
+                        "tokens_seen": tokens_seen,
+                        "tokens_per_sec": tps,
                     },
                 )
 
@@ -97,6 +109,9 @@ class Trainer:
                     engine,
                     {"loss": step_loss / cfg.gradient_accumulation_steps},
                 )
+
+            if prof is not None:
+                prof.step()
 
         self.log.close()
 
@@ -116,7 +131,7 @@ class Trainer:
         return math.exp(total_loss / n_batches)
 
     # ------------------------------------------------------------------
-    # FSDP training loop
+    # FSDP2 training loop
     # ------------------------------------------------------------------
 
     def train_fsdp(
@@ -129,6 +144,9 @@ class Trainer:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         data_iter = iter(self.train_loader)
         nan_count = 0
+        tokens_seen = self.start_step * self.tokens_per_step
+        step_start = time.perf_counter()
+        prof = self._maybe_start_profiler()
 
         for global_step in range(self.start_step, cfg.max_steps):
             model.train()
@@ -162,15 +180,20 @@ class Trainer:
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
+            tokens_seen += self.tokens_per_step
 
             if global_step % cfg.logging_steps == 0:
-                current_lr = scheduler.get_last_lr()[0]
+                elapsed = time.perf_counter() - step_start
+                tps = self.tokens_per_step * cfg.logging_steps / max(elapsed, 1e-6)
+                step_start = time.perf_counter()
                 self.log.log(
                     global_step,
                     {
                         "loss": total_loss / cfg.gradient_accumulation_steps,
-                        "lr": current_lr,
+                        "lr": scheduler.get_last_lr()[0],
                         "grad_norm": float(grad_norm),
+                        "tokens_seen": tokens_seen,
+                        "tokens_per_sec": tps,
                     },
                 )
 
@@ -195,6 +218,9 @@ class Trainer:
                     {"loss": total_loss / cfg.gradient_accumulation_steps},
                 )
 
+            if prof is not None:
+                prof.step()
+
         self.log.close()
 
     def evaluate_fsdp(self, model: nn.Module, device: torch.device) -> float:
@@ -211,3 +237,28 @@ class Trainer:
         if n_batches == 0:
             return float("inf")
         return math.exp(total_loss / n_batches)
+
+    # ------------------------------------------------------------------
+    # Profiling
+    # ------------------------------------------------------------------
+
+    def _maybe_start_profiler(self) -> Any:
+        cfg = self.config
+        if cfg.profile_steps is None:
+            return None
+        prof = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            schedule=torch.profiler.schedule(
+                wait=cfg.warmup_steps,
+                warmup=1,
+                active=cfg.profile_steps,
+                repeat=1,
+            ),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(cfg.output_dir),
+            with_stack=False,
+        )
+        prof.start()
+        return prof

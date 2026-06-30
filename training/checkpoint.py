@@ -42,7 +42,7 @@ class CheckpointManager:
         return self.output_dir / "checkpoint-best"
 
     # ------------------------------------------------------------------
-    # FSDP path
+    # FSDP2 path — uses torch.distributed.checkpoint (DCP)
     # ------------------------------------------------------------------
 
     def save_fsdp(
@@ -53,28 +53,42 @@ class CheckpointManager:
         scheduler: Any,
         trainer_state: dict[str, Any],
     ) -> None:
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-        from torch.distributed.fsdp import StateDictType
+        import torch.distributed.checkpoint as dcp
+        from torch.distributed.checkpoint.state_dict import get_state_dict
 
         ckpt_dir = self._ckpt_dir(step)
-        rng_states = get_rng_states()
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-        with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT):
-            if self._rank == 0:
-                ckpt_dir.mkdir(parents=True, exist_ok=True)
-                torch.save(model.state_dict(), ckpt_dir / "model.pt")
-                torch.save(optimizer.state_dict(), ckpt_dir / "optimizer.pt")
-                torch.save(scheduler.state_dict(), ckpt_dir / "scheduler.pt")
-                torch.save(rng_states, ckpt_dir / "rng_state.pt")
-                trainer_state["global_step"] = step
-                trainer_state["best_val_loss"] = self.best_val_loss
-                (ckpt_dir / "trainer_state.json").write_text(json.dumps(trainer_state))
+        # Per-rank distributed save — no rank-0 gather, no OOM on large models.
+        model_sd, optim_sd = get_state_dict(model, optimizer)
+        dcp.save(  # type: ignore[attr-defined]
+            {"model": model_sd, "optimizer": optim_sd},
+            checkpoint_id=str(ckpt_dir),
+        )
+
+        # Non-distributed metadata: scheduler, RNG, trainer state (rank-0 only).
+        if self._rank == 0:
+            torch.save(scheduler.state_dict(), ckpt_dir / "scheduler.pt")
+            torch.save(get_rng_states(), ckpt_dir / "rng_state.pt")
+            trainer_state["global_step"] = step
+            trainer_state["best_val_loss"] = self.best_val_loss
+            (ckpt_dir / "trainer_state.json").write_text(json.dumps(trainer_state))
 
         if dist.is_initialized():
             dist.barrier()
 
         if self._rank == 0:
             self._rotate()
+
+    def load_weights(self, path: str | Path, model: torch.nn.Module) -> None:
+        """Load only model weights from a DCP checkpoint (no optimizer/scheduler)."""
+        import torch.distributed.checkpoint as dcp
+        from torch.distributed.checkpoint.state_dict import set_model_state_dict
+
+        ckpt_dir = Path(path)
+        state: dict[str, Any] = {"model": {}}
+        dcp.load(state, checkpoint_id=str(ckpt_dir))  # type: ignore[attr-defined]
+        set_model_state_dict(model, state["model"])  # type: ignore[attr-defined]
 
     def load_fsdp(
         self,
@@ -83,11 +97,19 @@ class CheckpointManager:
         optimizer: torch.optim.Optimizer,
         scheduler: Any,
     ) -> dict[str, Any]:
+        import torch.distributed.checkpoint as dcp
+        from torch.distributed.checkpoint.state_dict import set_state_dict
+
         ckpt_dir = Path(path)
-        model.load_state_dict(torch.load(ckpt_dir / "model.pt", weights_only=True))
-        optimizer.load_state_dict(
-            torch.load(ckpt_dir / "optimizer.pt", weights_only=True)
+        state: dict[str, Any] = {"model": {}, "optimizer": {}}
+        dcp.load(state, checkpoint_id=str(ckpt_dir))  # type: ignore[attr-defined]
+        set_state_dict(
+            model,
+            optimizer,
+            model_state_dict=state["model"],
+            optim_state_dict=state["optimizer"],
         )
+
         scheduler.load_state_dict(
             torch.load(ckpt_dir / "scheduler.pt", weights_only=True)
         )
