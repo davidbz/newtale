@@ -25,10 +25,6 @@ class NewTaleTokenizer:
         return self._tok.eos_token_id  # type: ignore[return-value]
 
     @property
-    def pad_id(self) -> int:
-        return self._tok.pad_token_id  # type: ignore[return-value]
-
-    @property
     def vocab_size(self) -> int:
         return len(self._tok)
 

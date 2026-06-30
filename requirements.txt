@@ -4,11 +4,9 @@ transformers
 datasets
 tokenizers
 deepspeed
-accelerate
 pyyaml
 xxhash
 tensorboard
-tqdm
 safetensors
 
 # Dev / testing
@@ -20,4 +18,3 @@ pytest-xdist
 # wandb                    # Experiment tracking
 # lm-eval                  # Benchmark harness (scripts/eval_benchmarks.py)
 # torchao                  # FP8 training (fp8_training: true in config)
-# datasketch               # MinHash near-dedup

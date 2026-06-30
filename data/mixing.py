@@ -36,9 +36,6 @@ class WeightedDatasetMixer:
         self._names = names
         self._token_counts = [0] * len(datasets)
 
-    def reseed(self, seed: int) -> None:
-        self._rng = random.Random(seed)
-
     def __iter__(self) -> Iterator[dict[str, Any]]:
         while True:
             total = sum(self._token_counts) or 1
