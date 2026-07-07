@@ -1,6 +1,6 @@
 # Base: NVCR PyTorch image with CUDA 12.4, cuDNN 9, PyTorch 2.5
 # Pinned for reproducibility — update tag to upgrade CUDA/PyTorch together.
-FROM nvcr.io/nvidia/pytorch:25.03-py3
+FROM nvcr.io/nvidia/pytorch:26.06-py3
 
 WORKDIR /workspace
 
